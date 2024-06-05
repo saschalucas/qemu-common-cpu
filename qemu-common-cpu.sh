@@ -22,10 +22,9 @@ DSH="$(which dsh || true)"
 [[ -x "${DSH}" ]] || log_fail "this script uses dsh, please install on ${THIS_HOST}"
 DSH="${DSH} -f /var/lib/ganeti/ssconf_node_list -r ssh -o "-oHashKnownHosts=no" -o "-oGlobalKnownHostsFile=/var/lib/ganeti/known_hosts" -o "-oUserKnownHostsFile=/dev/null" -o "-oCheckHostIp=no" -o "-oHostKeyAlias=${CLUSTER}" -o "-oBatchMode=yes" -o "-oStrictHostKeyChecking=yes" -M  -c --"
 QEMU_CPU_TEST="1>/dev/null 2>&1 qemu-system-x86_64 -machine accel=kvm -nographic -nodefaults -boot c,reboot-timeout=1 -no-reboot"
-# known qemu CPU types (Intel) in order of precedence (later are better)
-CPU_CODENAMES="Nehalem-IBRS Westmere-IBRS SandyBridge-IBRS IvyBridge-IBRS Haswell-noTSX-IBRS Broadwell-noTSX-IBRS Skylake-Server-noTSX-IBRS Cascadelake-Server-noTSX Icelake-Server-noTSX"
 
 #### main
+
 # microcode is essential for CPU bugs
 echo -n "checking for intel-microcode package: "
 if ${DSH} dpkg-query -W intel-microcode 1>/dev/null 2>&1; then
@@ -34,22 +33,22 @@ else
   log_fail "please install intel-microcode on all nodes, then reboot affected"
 fi
 
-# testing if the local qemu know the cpu type
+# Intel Core Codenames
+INTEL_CODES="Nehalem Westmere SandyBridge IvyBridge Haswell Broadwell Skylake-Server Cascadelake-Server Icelake-Server"
 CPU_TYPES=""
-for p in ${CPU_CODENAMES}; do
-  if qemu-system-x86_64 -cpu help | grep ^x86 | awk '{ print $2}' | grep -q "^${p}$"; then 
-    CPU_TYPES="${CPU_TYPES} ${p}"
-  fi
+for code in ${INTEL_CODES}; do
+	regex="^${code}-v[0-9]\$"
+	add=$(qemu-system-x86_64 -cpu help | awk -v regex=${regex} '$2 ~ regex {print $2}')
+	CPU_TYPES="${CPU_TYPES} ${add}"
 done
 for cpu in ${CPU_TYPES}; do
   echo -n "testing the ${cpu} CPU: "
   if ${DSH} ${QEMU_CPU_TEST} -cpu "${cpu},enforce" ; then
+    good_cpu="${cpu}"
     echo "good"
   else
     log_info "failed"
-    break
   fi
-  good_cpu="${cpu}"
 done
 
 # known to be good CPU-Flags
